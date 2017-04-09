@@ -1,29 +1,68 @@
 
-/*
-  Needed SDKS:
-    java 1.8
-    scala-sdk-2.12.1
-    com.typesafe.akka:akka-actor_2.12:2.5-M2
- */
 
-import akka.actor.Actor
-import akka.actor.ActorSystem
-import akka.actor.Props
+import akka.actor._
+case object PingMessage
+case object PongMessage
+case object xStartMessage
+case object xStopMessage
 
-class HelloActor extends Actor
+
+class Ping(pong: ActorRef) extends Actor
 {
-  def receive =
+  var count = 0
+  def incrementAndPrint()
   {
-    case "hello" => println("hello back at you")
-    case _       => println("huh?")
+    count += 1;
+    println("ping")
+  }
+
+  def receive: PartialFunction[Any, Unit] =
+  {
+    case xStartMessage =>
+      incrementAndPrint()
+      pong ! PingMessage
+
+    case PongMessage =>
+      incrementAndPrint()
+      if (count > 99)
+      {
+        sender ! xStopMessage
+        println("ping stopped")
+        context.stop(self)
+      }
+      else
+      {
+        sender ! PingMessage
+        //Thread.sleep(1000)
+      }
+
+    case _ => println("Ping got something unexpected.")
   }
 }
 
-  object Test2 extends App
+class Pong extends Actor
+{
+  def receive: PartialFunction[Any, Unit] =
   {
-    val system = ActorSystem("HelloSystem")
-    // default Actor constructor
-    val helloActor = system.actorOf(Props[HelloActor], name = "helloactor")
-    helloActor ! "hello"
-    helloActor ! "buenos dias"
+    case PingMessage =>
+      println(" pong")
+      sender ! PongMessage
+
+    case xStopMessage =>
+      println("pong stopped")
+      context.stop(self)
+
+    case _ => println("Pong got something unexpected.")
   }
+}
+object PingPongTest extends App
+{
+  val system = ActorSystem("PingPongSystem")
+  val pong = system.actorOf(Props[Pong], name = "pong")
+  val ping = system.actorOf(Props(new Ping(pong)), name = "ping")
+  // start the action
+  ping ! xStartMessage
+  // commented-out so you can see all the output
+  //system.shutdown
+  
+}
