@@ -5,17 +5,20 @@ import scala.concurrent.duration._
 import scala.concurrent.ExecutionContext.Implicits.global
 
 case object BeatMessage
-case object PrivateBeat
+case object GetTicks
+case object ClearTicks
 
-class BeatTicker extends Actor
+class BeatTicker (interval : Int) extends Actor
 {
-  var ticker : Cancellable = context.system.scheduler.schedule (
-    500 milliseconds,
-    500 milliseconds,
+  private object PrivateBeat
+
+  val ticker: Cancellable = context.system.scheduler.schedule(
+    interval milliseconds,
+    interval milliseconds,
     context.self,
     PrivateBeat)
 
-  var alltasks: ActorSelection = context.system.actorSelection("/user/*")
+  val alltasks: ActorSelection = context.system.actorSelection("/user/*")
 
   def receive: PartialFunction[Any, Unit] =
   {
@@ -26,18 +29,48 @@ class BeatTicker extends Actor
 
 class TestActor extends Actor
 {
+  var ticks : Long = 0
+
   override def receive: PartialFunction[Any, Unit] =
   {
-    case BeatMessage => println ("got beat" + self)
+    case BeatMessage =>
+      ticks = ticks + 1
+
+    // Send long value
+    case GetTicks =>
+      sender ! ticks
+
+    case ClearTicks =>
+      ticks = 0
   }
 }
+
+class QueryActor (act : ActorRef) extends Actor
+{
+  override def receive: PartialFunction[Any, Unit] =
+  {
+    case "query" =>
+      act ! GetTicks
+
+    // Receive long value
+    case x: Long =>
+      println("Received: " + x)
+  }
+}
+
 
 object starter extends App
 {
   val system = akka.actor.ActorSystem("mySystem")
   val test1 = system.actorOf(Props(new TestActor()), name = "test1")
   val test2 = system.actorOf(Props(new TestActor()), name = "test2")
-  val ticker = system.actorOf(Props(new BeatTicker()), name = "btt")
+  val ticker = system.actorOf(Props(new BeatTicker(1)), name = "btt")
   val test3 = system.actorOf(Props(new TestActor()), name = "test3")
+  val query = system.actorOf(Props(new QueryActor(test3)), name = "query0")
+
+  Thread.sleep(5000)
+  test1 ! ClearTicks
+  Thread.sleep (500)
+  query ! "query"
 }
 
